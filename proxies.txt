@@ -1,0 +1,42 @@
+# Stage 1: Base image for ARMv7/ARMv8 (Alpine)
+FROM --platform=linux/arm/v7 alpine:3.18 AS base-armv7
+FROM --platform=linux/arm64 alpine:3.18 AS base-armv8
+
+# Base image selection (use multi-platform build)
+ARG TARGETPLATFORM
+RUN echo "Building for platform: $TARGETPLATFORM"
+
+# Environment setup
+ENV APP_DIR=/app
+
+# Create app directory
+WORKDIR $APP_DIR
+
+# Install runtime dependencies
+RUN apk add --no-cache \
+    bash \
+    curl \
+    tini \
+    python3 \
+    py3-pip \
+    && pip3 install --no-cache-dir --upgrade pip
+
+# Stage 2: Application installation
+COPY . $APP_DIR
+
+# Install application dependencies
+RUN pip3 install --no-cache-dir -r requirements.txt
+
+# Final Stage: Minimal runtime image
+FROM --platform=linux/arm/v7 base-armv7 AS runtime-armv7
+FROM --platform=linux/arm64 base-armv8 AS runtime-armv8
+
+# Copy application from previous stage
+COPY --from=base-armv7 /app /app
+COPY --from=base-armv8 /app /app
+
+# Default command
+ENTRYPOINT ["/sbin/tini", "--"]
+
+# Start the application
+CMD ["python3", "main.py"]
